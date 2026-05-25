@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 トーン: ${toneLabel}`
 
     const message = await client.messages.create({
-      model: "claude-sonnet-4-5-20250514",
+      model: "claude-sonnet-4-6-20250515",
       max_tokens: 512,
       system: systemPrompt,
       messages: [
