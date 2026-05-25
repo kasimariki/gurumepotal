@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 テンプレート: ${template || "本日のおすすめ"}`
 
     const message = await client.messages.create({
-      model: "claude-sonnet-4-6-20250515",
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 1024,
       system: systemPrompt,
       messages: [
