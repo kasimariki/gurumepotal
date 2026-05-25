@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import {
   ChevronRight,
   Plus,
@@ -10,6 +10,7 @@ import {
   Hash,
   Star,
   FileText,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -59,8 +60,53 @@ export function PostCreateForm() {
   const [selectedHashtags, setSelectedHashtags] = useState<string[]>(
     hashtagOptions.filter((h) => h.active).map((h) => h.tag)
   )
+  const [selectedTemplate, setSelectedTemplate] = useState("recommend")
   const [scheduleDate, setScheduleDate] = useState("2026-05-30")
   const [scheduleTime, setScheduleTime] = useState("18:00")
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedContent, setGeneratedContent] = useState<{
+    instagram: { content: string; hashtags: string }
+    threads: { content: string }
+    gbp: { content: string }
+  } | null>(null)
+
+  const templateLabels: Record<string, string> = {
+    recommend: "本日のおすすめ",
+    "new-menu": "新メニュー紹介",
+    campaign: "キャンペーン告知",
+    hours: "営業時間変更",
+    regulars: "常連感謝",
+  }
+
+  const handleGeneratePost = useCallback(async () => {
+    if (!promptText.trim()) return
+    setIsGenerating(true)
+    try {
+      const toneLabel =
+        toneOptions.find((t) => t.id === activeTone)?.label || "こだわり職人"
+      const res = await fetch("/api/ai/generate-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: promptText,
+          tone: toneLabel,
+          template: templateLabels[selectedTemplate] || "本日のおすすめ",
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "生成に失敗しました")
+      }
+      const data = await res.json()
+      setGeneratedContent(data)
+    } catch (error) {
+      alert(
+        error instanceof Error ? error.message : "投稿文の生成に失敗しました"
+      )
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [promptText, activeTone, selectedTemplate])
 
   const toggleHashtag = (tag: string) => {
     setSelectedHashtags((prev) =>
@@ -217,7 +263,12 @@ export function PostCreateForm() {
                 <Label className="text-[13px] text-[#1A2E4A]">
                   テンプレート
                 </Label>
-                <Select defaultValue="recommend">
+                <Select
+                  value={selectedTemplate}
+                  onValueChange={(v) => {
+                    if (v) setSelectedTemplate(v)
+                  }}
+                >
                   <SelectTrigger className="w-full border-[#DDE6EE] bg-white text-[13px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -235,12 +286,20 @@ export function PostCreateForm() {
               <Button
                 className="w-full bg-[#0F3D7A] text-white hover:bg-[#0A2D5E]"
                 size="lg"
+                onClick={handleGeneratePost}
+                disabled={isGenerating || !promptText.trim()}
               >
-                <Sparkles size={16} />
-                AIで3媒体の文面を生成
+                {isGenerating ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                {isGenerating ? "生成中..." : "AIで3媒体の文面を生成"}
               </Button>
               <p className="text-center text-[11px] text-[#9EB4C4]">
-                生成に約8秒かかります
+                {isGenerating
+                  ? "AIが投稿文を生成しています..."
+                  : "生成に約8秒かかります"}
               </p>
             </CardContent>
           </Card>
@@ -372,30 +431,50 @@ export function PostCreateForm() {
                   <PreviewColumn
                     platform="Instagram"
                     platformColor="#E1306C"
-                    charCount="128 / 2,200"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.instagram.content.length} / 2,200`
+                        : "128 / 2,200"
+                    }
                     aspectRatio="aspect-square"
                     text={
-                      <>
-                        <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
-                          職人が一本一本、備長炭で丁寧に焼き上げる比内地鶏の塩焼き。
+                      generatedContent ? (
+                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                          {generatedContent.instagram.content}
                         </p>
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
-                          秋田が誇る日本三大地鶏のひとつ、比内地鶏。その旨味を最大限に引き出すため、私たちは「塩」と「炭火」だけで勝負します。
-                        </p>
-                      </>
+                      ) : (
+                        <>
+                          <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
+                            職人が一本一本、備長炭で丁寧に焼き上げる比内地鶏の塩焼き。
+                          </p>
+                          <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
+                            秋田が誇る日本三大地鶏のひとつ、比内地鶏。その旨味を最大限に引き出すため、私たちは「塩」と「炭火」だけで勝負します。
+                          </p>
+                        </>
+                      )
                     }
-                    hashtags="#比内地鶏 #炭火焼鳥 #渋谷焼鳥 #渋谷ディナー #焼鳥好きな人と繋がりたい #東京グルメ"
+                    hashtags={
+                      generatedContent
+                        ? generatedContent.instagram.hashtags
+                        : "#比内地鶏 #炭火焼鳥 #渋谷焼鳥 #渋谷ディナー #焼鳥好きな人と繋がりたい #東京グルメ"
+                    }
                   />
 
                   {/* Threads Preview */}
                   <PreviewColumn
                     platform="Threads"
                     platformColor="#1A2E4A"
-                    charCount="96 / 500"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.threads.content.length} / 500`
+                        : "96 / 500"
+                    }
                     aspectRatio="aspect-square"
                     text={
-                      <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
-                        うちの比内地鶏の塩焼き、マジで一回食べてみてほしい。備長炭でじっくり焼くから、皮パリッパリで肉汁がじゅわっと... これは言葉じゃ伝わらないやつ。渋谷で待ってます!
+                      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                        {generatedContent
+                          ? generatedContent.threads.content
+                          : "うちの比内地鶏の塩焼き、マジで一回食べてみてほしい。備長炭でじっくり焼くから、皮パリッパリで肉汁がじゅわっと... これは言葉じゃ伝わらないやつ。渋谷で待ってます!"}
                       </p>
                     }
                     hashtags="#渋谷焼鳥 #比内地鶏"
@@ -405,17 +484,27 @@ export function PostCreateForm() {
                   <PreviewColumn
                     platform="Googleビジネス"
                     platformColor="#4285F4"
-                    charCount="112 / 1,500"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.gbp.content.length} / 1,500`
+                        : "112 / 1,500"
+                    }
                     aspectRatio="aspect-video"
                     text={
-                      <>
-                        <p className="text-[12px] font-semibold text-[#1A2E4A]">
-                          【本日のおすすめ】比内地鶏の塩焼き
+                      generatedContent ? (
+                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                          {generatedContent.gbp.content}
                         </p>
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
-                          日本三大地鶏「比内地鶏」を備長炭で丁寧に焼き上げました。塩のみで味わう、素材本来の旨味をお楽しみください。
-                        </p>
-                      </>
+                      ) : (
+                        <>
+                          <p className="text-[12px] font-semibold text-[#1A2E4A]">
+                            【本日のおすすめ】比内地鶏の塩焼き
+                          </p>
+                          <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
+                            日本三大地鶏「比内地鶏」を備長炭で丁寧に焼き上げました。塩のみで味わう、素材本来の旨味をお楽しみください。
+                          </p>
+                        </>
+                      )
                     }
                     hashtags=""
                     actionText="詳細を見る"
@@ -428,19 +517,33 @@ export function PostCreateForm() {
                   <PreviewColumn
                     platform="Instagram"
                     platformColor="#E1306C"
-                    charCount="128 / 2,200"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.instagram.content.length} / 2,200`
+                        : "128 / 2,200"
+                    }
                     aspectRatio="aspect-square"
                     text={
-                      <>
-                        <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
-                          職人が一本一本、備長炭で丁寧に焼き上げる比内地鶏の塩焼き。
+                      generatedContent ? (
+                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                          {generatedContent.instagram.content}
                         </p>
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
-                          秋田が誇る日本三大地鶏のひとつ、比内地鶏。その旨味を最大限に引き出すため、私たちは「塩」と「炭火」だけで勝負します。
-                        </p>
-                      </>
+                      ) : (
+                        <>
+                          <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
+                            職人が一本一本、備長炭で丁寧に焼き上げる比内地鶏の塩焼き。
+                          </p>
+                          <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
+                            秋田が誇る日本三大地鶏のひとつ、比内地鶏。その旨味を最大限に引き出すため、私たちは「塩」と「炭火」だけで勝負します。
+                          </p>
+                        </>
+                      )
                     }
-                    hashtags="#比内地鶏 #炭火焼鳥 #渋谷焼鳥 #渋谷ディナー #焼鳥好きな人と繋がりたい #東京グルメ"
+                    hashtags={
+                      generatedContent
+                        ? generatedContent.instagram.hashtags
+                        : "#比内地鶏 #炭火焼鳥 #渋谷焼鳥 #渋谷ディナー #焼鳥好きな人と繋がりたい #東京グルメ"
+                    }
                   />
                 </div>
               </TabsContent>
@@ -450,11 +553,17 @@ export function PostCreateForm() {
                   <PreviewColumn
                     platform="Threads"
                     platformColor="#1A2E4A"
-                    charCount="96 / 500"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.threads.content.length} / 500`
+                        : "96 / 500"
+                    }
                     aspectRatio="aspect-square"
                     text={
-                      <p className="text-[12px] leading-relaxed text-[#1A2E4A]">
-                        うちの比内地鶏の塩焼き、マジで一回食べてみてほしい。備長炭でじっくり焼くから、皮パリッパリで肉汁がじゅわっと... これは言葉じゃ伝わらないやつ。渋谷で待ってます!
+                      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                        {generatedContent
+                          ? generatedContent.threads.content
+                          : "うちの比内地鶏の塩焼き、マジで一回食べてみてほしい。備長炭でじっくり焼くから、皮パリッパリで肉汁がじゅわっと... これは言葉じゃ伝わらないやつ。渋谷で待ってます!"}
                       </p>
                     }
                     hashtags="#渋谷焼鳥 #比内地鶏"
@@ -467,17 +576,27 @@ export function PostCreateForm() {
                   <PreviewColumn
                     platform="Googleビジネス"
                     platformColor="#4285F4"
-                    charCount="112 / 1,500"
+                    charCount={
+                      generatedContent
+                        ? `${generatedContent.gbp.content.length} / 1,500`
+                        : "112 / 1,500"
+                    }
                     aspectRatio="aspect-video"
                     text={
-                      <>
-                        <p className="text-[12px] font-semibold text-[#1A2E4A]">
-                          【本日のおすすめ】比内地鶏の塩焼き
+                      generatedContent ? (
+                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[#1A2E4A]">
+                          {generatedContent.gbp.content}
                         </p>
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
-                          日本三大地鶏「比内地鶏」を備長炭で丁寧に焼き上げました。塩のみで味わう、素材本来の旨味をお楽しみください。
-                        </p>
-                      </>
+                      ) : (
+                        <>
+                          <p className="text-[12px] font-semibold text-[#1A2E4A]">
+                            【本日のおすすめ】比内地鶏の塩焼き
+                          </p>
+                          <p className="mt-1.5 text-[12px] leading-relaxed text-[#1A2E4A]">
+                            日本三大地鶏「比内地鶏」を備長炭で丁寧に焼き上げました。塩のみで味わう、素材本来の旨味をお楽しみください。
+                          </p>
+                        </>
+                      )
                     }
                     hashtags=""
                     actionText="詳細を見る"

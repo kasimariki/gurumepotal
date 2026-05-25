@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  Loader2,
 } from "lucide-react"
 
 // ---------- Types ----------
@@ -175,6 +176,43 @@ export function ReviewsDashboard() {
   const [selectedReviewId, setSelectedReviewId] = useState<number>(1)
   const [tone, setTone] = useState<"polite" | "friendly" | "formal">("polite")
   const [draftText, setDraftText] = useState(AI_DRAFTS[1] || "")
+  const [isGeneratingReply, setIsGeneratingReply] = useState(false)
+
+  const handleGenerateReply = useCallback(
+    async (reviewId: number) => {
+      const review = REVIEWS.find((r) => r.id === reviewId)
+      if (!review) return
+      setIsGeneratingReply(true)
+      try {
+        const res = await fetch("/api/ai/generate-reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewBody: review.body,
+            rating: review.rating,
+            source: review.source,
+            tone,
+            storeName: "炭火焼鳥 とり源 渋谷店",
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || "返信の生成に失敗しました")
+        }
+        const data = await res.json()
+        setDraftText(data.reply)
+      } catch (error) {
+        alert(
+          error instanceof Error
+            ? error.message
+            : "AI返信の生成に失敗しました"
+        )
+      } finally {
+        setIsGeneratingReply(false)
+      }
+    },
+    [tone]
+  )
 
   // Filter reviews
   const filteredReviews = REVIEWS.filter((r) => {
@@ -463,10 +501,22 @@ export function ReviewsDashboard() {
                         ? "border border-[#0F3D7A] text-[#0F3D7A] hover:bg-[#E6EEF8]"
                         : "border border-[#DDE6EE] text-[#5A7184] hover:bg-[#F5F8FA]"
                   }`}
+                  onClick={(e) => {
+                    if (review.status === "unreplied") {
+                      e.stopPropagation()
+                      handleSelectReview(review.id)
+                      handleGenerateReply(review.id)
+                    }
+                  }}
                 >
                   {review.status === "unreplied" && (
                     <>
-                      <Sparkles className="h-3 w-3" />
+                      {isGeneratingReply &&
+                      selectedReviewId === review.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
                       AI返信を作成
                     </>
                   )}
@@ -538,12 +588,24 @@ export function ReviewsDashboard() {
                 </div>
 
                 <div className="p-5">
-                  <Textarea
-                    value={draftText}
-                    onChange={(e) => setDraftText(e.target.value)}
-                    rows={6}
-                    className="min-h-[140px] border-[#DDE6EE] text-sm leading-relaxed text-[#1A2E4A] focus-visible:border-[#0F3D7A] focus-visible:ring-[#0F3D7A]/20"
-                  />
+                  <div className="relative">
+                    <Textarea
+                      value={
+                        isGeneratingReply
+                          ? "AIが返信を生成しています..."
+                          : draftText
+                      }
+                      onChange={(e) => setDraftText(e.target.value)}
+                      rows={6}
+                      disabled={isGeneratingReply}
+                      className="min-h-[140px] border-[#DDE6EE] text-sm leading-relaxed text-[#1A2E4A] focus-visible:border-[#0F3D7A] focus-visible:ring-[#0F3D7A]/20 disabled:opacity-60"
+                    />
+                    {isGeneratingReply && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/60">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#0F3D7A]" />
+                      </div>
+                    )}
+                  </div>
 
                   {/* Tone selector */}
                   <div className="mt-4">
@@ -573,13 +635,20 @@ export function ReviewsDashboard() {
                       variant="outline"
                       size="default"
                       className="gap-1.5 border-[#DDE6EE] text-xs text-[#5A7184] hover:border-[#B0C4D4] hover:text-[#1A2E4A]"
+                      onClick={() => handleGenerateReply(selectedReviewId)}
+                      disabled={isGeneratingReply}
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      再生成
+                      {isGeneratingReply ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                      {isGeneratingReply ? "生成中..." : "再生成"}
                     </Button>
                     <Button
                       size="default"
                       className="flex-1 gap-1.5 bg-[#0F3D7A] text-xs text-white hover:bg-[#0A2D5E]"
+                      disabled={isGeneratingReply}
                     >
                       <Send className="h-3.5 w-3.5" />
                       この返信を送信

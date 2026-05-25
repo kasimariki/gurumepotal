@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/meo/measure",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
